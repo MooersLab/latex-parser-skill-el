@@ -9,7 +9,16 @@
 [[https://github.com/MooersLab/latex-parser-skill-el/actions/workflows/test.yml][https://github.com/MooersLab/latex-parser-skill-el/actions/workflows/test.yml/badge.svg]]
 [[https://www.gnu.org/licenses/gpl-3.0][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
 
-Turn raw dictated or transcribed text in an Emacs LaTeX buffer into a structured LaTeX fragment with the transcript-parser skill.
+Turn unstructured text in an Emacs LaTeX buffer into a structured LaTeX fragment with the transcript-parser skill.
+This skill was originally developed to parse prose extracted from audio files on a digital voice recorder, hence the name transcript-parser.
+We extracted this functionality from the whisper-dvr.el package to make it available for any chunk of prose in  \LaTeX, regardless of its origin.
+
+We wanted to break out this capability because the whisper-dvr.el package depends on the whisper.el package which is turn is not in MELPA.
+This means that whisper-dvr.el cannot be in MELPA
+
+This package runs the text through an LLM.
+That LLM can be a frontier model or a local model.
+
 
 * What it does
 #+INDEX: overview
@@ -46,7 +55,7 @@ The model can be Claude Code, the Claude API, a local server such as Ollama, or 
 * Installation
 #+INDEX: installation
 
-Install from MELPA with the following form.
+Install from MELPA using the following form.
 
 #+begin_src emacs-lisp
 (use-package latex-parser-skill
@@ -59,7 +68,7 @@ Install from MELPA with the following form.
     (define-key latex-mode-map (kbd "C-c t") 'latex-parser-skill-command-map)))
 #+end_src
 
-Install from a clone with the following form.
+Install from a clone with the following form. Edit the path to customize where you cloned the package.
 
 #+begin_src emacs-lisp
 (add-to-list 'load-path "~/6112MooersLabGitHubLabRepos/latex-parser-skill-el")
