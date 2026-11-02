@@ -1,0 +1,15 @@
+#+TITLE: Changelog for latex-parser-skill
+#+LaTeX_HEADER: \usepackage[margin=0.5in]{geometry}
+
+* 0.1.0 (2026-11-02)
+#+INDEX: release 0.1.0
+
+- [X] Region, buffer, dwim and file commands for LaTeX buffers.
+- [X] Four-stage pipeline of replacements, parse, verify and repair.
+- [X] Self-contained Stage 1 engine with a bundled contraction table and optional CSV rule files.
+- [X] Backends for Claude Code, the Claude Messages API, OpenAI-compatible local servers, and gptel.
+- [X] Chunking of long input with one merged TODO block.
+- [X] Preview buffer with accept, reject and diff.
+- [X] Verification report with links to the offending lines.
+- [X] Transient menu, prefix keymap and batch entry point.
+- [X] Offline ERT suite, Makefile, CI workflow and Info manual.

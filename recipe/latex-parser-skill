@@ -1,0 +1,3 @@
+(latex-parser-skill :fetcher github
+                    :repo "MooersLab/latex-parser-skill-el"
+                    :files (:defaults "prompts" "data" "docs/latex-parser-skill.texi"))

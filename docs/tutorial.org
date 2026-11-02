@@ -1,0 +1,157 @@
+#+TITLE: latex-parser-skill Tutorial
+#+AUTHOR: Blaine Mooers
+#+OPTIONS: toc:nil num:t
+#+LaTeX_HEADER: \usepackage[margin=0.5in]{geometry}
+#+LaTeX_HEADER: \usepackage{booktabs}
+#+LaTeX_HEADER: \usepackage{makeidx}
+#+LaTeX_HEADER: \makeindex
+
+* Tutorial
+#+INDEX: tutorial
+
+This tutorial takes about fifteen minutes.
+It walks through one session with a short transcript that did not pass through a dictation tool with its own clean-up step.
+The transcript ships with the package as =test/fixtures/raw-short.txt=.
+
+The tutorial assumes the suggested key bindings under =C-c t=.
+The section on key bindings shows how to set them up.
+
+** Check the backend
+#+INDEX: backend!check
+
+The default backend is =claude-code=.
+It runs the =claude= program in print mode, so Claude Code must be installed and signed in.
+Open a terminal and run the following command to confirm that the program answers.
+
+#+begin_src sh
+claude -p "Reply with the word ready."
+#+end_src
+
+If you would rather start with a local model, read the section on switching to a local model first.
+
+** Open a LaTeX buffer
+#+INDEX: LaTeX buffer
+
+Visit a new file called =tutorial.tex=.
+Emacs opens it in =LaTeX-mode= when AUCTeX is installed, or in the built-in =latex-mode= otherwise.
+Type a minimal document skeleton.
+
+#+begin_src latex
+\documentclass{article}
+\begin{document}
+
+\end{document}
+#+end_src
+
+** Add the preamble lines
+#+INDEX: preamble lines
+#+INDEX: unchecked macro
+
+The parsed output uses =\index= and a checklist whose items carry the =\unchecked= label.
+Press =C-c t p=.
+The command inserts =enumitem=, =amssymb=, =makeidx=, =\makeindex= and a definition of =\unchecked= above =\begin{document}=.
+It skips any line that is already present, so pressing it twice does no harm.
+
+** Paste the transcript
+#+INDEX: transcript
+
+Put the cursor on the blank line inside the document body.
+Insert the sample with =M-x insert-file= and choose =test/fixtures/raw-short.txt=.
+The text has contractions, two sound descriptions such as =(coughing)=, and a causal "since".
+
+** Parse the region
+#+INDEX: region command
+
+Select the two paragraphs of the transcript and press =C-c t r=.
+Emacs asks once per session whether text may leave the computer.
+Answer =y=.
+The mode line shows =LPS[...]= while the request runs, and Emacs stays responsive.
+
+Behind the scenes four stages run.
+Stage 1 expands the unambiguous contractions with the bundled table.
+Stage 2 sends the text and the transcript-parser instructions to the model.
+Stage 3 checks the reply against the rules of the skill.
+Stage 4 sends any rule violation back to the model for one repair pass.
+
+** Review the preview
+#+INDEX: preview buffer
+
+A buffer called =*latex-parser-skill-preview*= opens with the result.
+The header line lists the keys.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Keys in the preview buffer.
+| Key       | Action                                                  |
+|-----------+---------------------------------------------------------|
+| =C-c C-c= | Accept the result, including any edits you made         |
+| =C-c C-k= | Reject the result and keep the source text              |
+| =C-c C-d= | Show a unified diff between the source and the result   |
+| =C-c C-v= | Run the Stage 3 checks again on the preview             |
+
+Fix anything you dislike directly in the preview.
+Then press =C-c C-c=.
+The result replaces the transcript in one undo step, so =C-/= brings the transcript back.
+
+** Verify the buffer
+#+INDEX: verification report
+
+Press =C-c t v=.
+The command runs the Stage 3 checks on the document body and opens =*latex-parser-skill-report*=.
+Each entry links to its line.
+A clean result reports no violations.
+Try typing =don't= somewhere in the body and run the check again to see an entry appear.
+
+** Switch to a local model
+#+INDEX: local model
+#+INDEX: Ollama
+
+Start Ollama and pull a model that follows instructions well.
+Then tell the package about it.
+
+#+begin_src emacs-lisp
+(setq latex-parser-skill-openai-model "your-model-tag")
+#+end_src
+
+Press =C-c t m= and choose =openai-compatible=.
+The default URL points at Ollama on this computer, so no question about sending text appears.
+
+** See chunking at work
+#+INDEX: chunking
+
+Insert =test/fixtures/raw-long.txt= into a new buffer in =latex-mode= and run =C-c t b=.
+The openai-compatible backend splits input longer than 12000 characters by default.
+To watch the split happen on this short file, lower the size first.
+
+#+begin_src emacs-lisp
+(setq latex-parser-skill-chunk-sizes '((openai-compatible . 250)))
+#+end_src
+
+The mode line counts the chunks.
+The result holds one heading group per chunk and a single TODO block at the end.
+
+** Parse a file without opening it
+#+INDEX: file command
+
+Press =C-c t f= and choose =raw-short.txt=.
+The package writes =raw-short_parsed.tex= beside it and reports the path.
+This matches the naming rule of the transcript-parser skill.
+
+** Use your own dictation rules
+#+INDEX: rule files
+
+Export your dictation replacements to a CSV file of =trigger,replacement= lines.
+Add the file to Stage 1.
+
+#+begin_src emacs-lisp
+(setq latex-parser-skill-replacement-files '("~/dictation/rules.csv"))
+#+end_src
+
+Triggers may hold several words, such as =settle cassin=.
+Run =C-c t s= on a region to try Stage 1 alone without calling any model.
+
+** Read the log
+#+INDEX: log buffer
+
+Press =C-c t l=.
+The log lists each request, each reply, the number of Stage 1 replacements, and the timing.
+Set =latex-parser-skill-log-content= to nil to keep only sizes and timings.

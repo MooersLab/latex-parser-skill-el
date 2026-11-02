@@ -1,0 +1,441 @@
+#+TITLE: Development Plan for latex-parser-skill.el
+#+SUBTITLE: Updated with the settled decisions
+#+AUTHOR: Blaine Mooers
+#+DATE: 2026-11-02
+#+OPTIONS: toc:2 num:t
+#+STARTUP: overview
+#+LaTeX_HEADER: \usepackage[margin=0.5in]{geometry}
+#+LaTeX_HEADER: \usepackage{booktabs}
+#+LaTeX_HEADER: \usepackage{minted}
+#+LaTeX_HEADER: \usepackage{makeidx}
+#+LaTeX_HEADER: \makeindex
+
+* Purpose and scope
+#+INDEX: transcript-parser skill
+#+INDEX: whisper-dvr
+#+INDEX: non-DVR text
+
+The package =latex-parser-skill.el= runs the transcript-parser skill on raw dictated or transcribed text that sits in a LaTeX buffer.
+The text may come from a selected region, the whole buffer, or a file on disk.
+The target is text that did not pass through whisper-dvr.
+Such text has not received the Voice-In Plus replacements or the contraction table.
+The package therefore runs an optional deterministic cleaning stage before the language model stage.
+
+The package works in =latex-mode= (built in), =LaTeX-mode= (AUCTeX), and =LaTeX-ts-mode= when present.
+It talks to either a frontier model (Claude Code or the Claude API) or a local model (Ollama, llama.cpp, LM Studio, vLLM).
+It is written for submission to MELPA.
+
+The local repository lives at =~/6112MooersLabGitHubLabRepos/latex-parser-skill-el=.
+The package name is =latex-parser-skill= without the =-el= suffix.
+MELPA reviewers ask that package names avoid that suffix, although the repository name may keep it.
+
+* Pipeline design
+#+INDEX: pipeline
+#+INDEX: deterministic stage
+#+INDEX: verification
+
+The pipeline has four stages.
+An analogy from crystallography helps here.
+Stage 1 is like data reduction because it is deterministic and repeatable.
+Stage 2 is like model building because it needs judgment.
+Stage 3 is like validation with MolProbity because it checks the model against fixed rules.
+Stage 4 is like a short round of rebuilding guided by the validation report.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: The four stages of the latex-parser-skill pipeline.
+| Stage | Name              | Kind          | What it does                                                                       |
+|-------+-------------------+---------------+------------------------------------------------------------------------------------|
+|     1 | Replacements      | Deterministic | Built-in engine with the bundled contraction table and optional rule files |
+|     2 | Parse             | Model         | Sends the transcript-parser instructions and the text to the chosen backend        |
+|     3 | Verify            | Deterministic | Checks the output against the rules in the Verification section of the skill       |
+|     4 | Repair (optional) | Model         | Sends the list of violations back to the backend for one corrective pass           |
+
+Stage 1 is on by default because the package exists for non-DVR text.
+The user can turn it off with =latex-parser-skill-run-replacements=.
+The script path is a user option.
+The engine is self-contained and reads optional CSV rule files.
+An external program may replace it through a user option.
+
+* Architecture
+#+INDEX: architecture
+#+INDEX: backend registry
+
+** Source files
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Source files and their responsibilities.
+| File                              | Responsibility                                                               |
+|-----------------------------------+------------------------------------------------------------------------------|
+| =latex-parser-skill.el=           | Entry point, user options, interactive commands, keymap, output actions      |
+| =latex-parser-skill-backend.el=   | Backend registry and the built-in backends                                    |
+| =latex-parser-skill-replace.el=   | Self-contained Stage 1 engine and optional external command                   |
+| =latex-parser-skill-verify.el=    | Stage 3 checks and the violation report                                       |
+| =latex-parser-skill-chunk.el=     | Splitting long input at paragraph boundaries and merging TODO blocks          |
+| =prompts/transcript-parser.md=    | Bundled copy of the skill instructions used as the system prompt              |
+
+** Backend abstraction
+#+INDEX: claude-code backend
+#+INDEX: anthropic-api backend
+#+INDEX: openai-compatible backend
+#+INDEX: local model
+
+Each backend is a registered function with one calling convention.
+It takes a system prompt, the user text, a success callback, and an error callback.
+It returns a handle that =latex-parser-skill-cancel= can kill.
+Every backend is asynchronous so Emacs never freezes during a request.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Built-in backends.
+| Backend symbol      | Transport                                     | Typical use                                    |
+|---------------------+-----------------------------------------------+------------------------------------------------|
+| =claude-code=       | =make-process= on =claude -p= with stdin       | Frontier model through a Claude Code login      |
+| =anthropic-api=     | =url-retrieve= to the Messages API             | Frontier model with an API key                  |
+| =openai-compatible= | =url-retrieve= to =/v1/chat/completions=       | Ollama, llama.cpp server, LM Studio, vLLM       |
+| =gptel=             | =gptel-request= when gptel is installed        | Reuse an existing gptel configuration           |
+| =fake=              | Returns a fixture string                       | Tests only, registered by the test helper       |
+
+The =gptel= backend is a soft dependency.
+The package declares the gptel functions and checks =(featurep 'gptel)= at call time.
+MELPA therefore sees no hard dependency.
+
+The API key for =anthropic-api= comes from =auth-source= under the host =api.anthropic.com=.
+No key is ever stored in a user option.
+Model names are user options with documented defaults.
+
+The =claude-code= backend has two prompt modes.
+In the first mode it passes the bundled prompt with =--append-system-prompt=.
+In the second mode it relies on the transcript-parser skill installed in =~/.claude/skills= and sends a short instruction.
+The exact command-line flags will be confirmed against =claude --help= during Phase 2 and recorded in a test.
+
+** Local model considerations
+#+INDEX: context window
+#+INDEX: chunking
+
+Local models have smaller context windows and follow long instructions less reliably.
+The plan handles this in three ways.
+First, a per-backend chunk size splits long input at blank lines.
+Second, the request sets temperature to zero.
+Third, the verify and repair stages catch the rule violations that small models make most often.
+
+Chunking has a cost.
+Topic detection only sees one chunk at a time, so a topic that spans a chunk boundary may receive two headings.
+The merge step collects every TODO list into one final block.
+The chunk size defaults to nil (no chunking) for frontier backends.
+
+** Output actions
+#+INDEX: preview buffer
+#+INDEX: undo
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Values of =latex-parser-skill-output-action=.
+| Value          | Behavior                                                                        |
+|----------------+---------------------------------------------------------------------------------|
+| =preview=      | Default. Shows a diff buffer. =C-c C-c= accepts and =C-c C-k= rejects             |
+| =replace=      | Replaces the source text inside one undo group                                   |
+| =insert-after= | Inserts the result after the source text and keeps the original                  |
+| =new-buffer=   | Opens the result in a new LaTeX buffer                                           |
+| =file=         | Writes =NAME_parsed.tex= beside the source file, matching the skill convention    |
+
+Region commands store the region as two markers.
+If the text between the markers changes while the request runs, the package refuses to replace it and opens a new buffer instead.
+The file command defaults to the =file= action.
+
+** Post-processing
+#+INDEX: code fences
+#+INDEX: unchecked macro
+
+The post-processing step strips Markdown code fences that some models add.
+It trims leading chatter before the first =\subsubsection=.
+It guarantees a trailing newline.
+A helper command inserts the preamble lines that the TODO block needs.
+These are =\usepackage{enumitem}=, =\usepackage{amssymb}=, and a definition of =\unchecked=.
+
+** Verification rules
+#+INDEX: verification rules
+
+Stage 3 mirrors the Verification section of the skill.
+Each check returns a list of violations with line numbers.
+
+- No =\documentclass=, =\usepackage=, =\begin{document}=, or =\end{document}= line.
+- Every =\subsubsection= is followed by at least one =\index= line.
+- No contraction remains. The check uses a bundled contraction list rather than a bare apostrophe regex so possessives do not trigger it.
+- No sound-description parenthetical from the canonical list remains.
+- The TODO =itemize= block comes last and is closed.
+- No em-dash or triple hyphen appears in prose.
+
+The command =latex-parser-skill-verify-buffer= runs these checks on any buffer.
+This command is useful by itself on text parsed elsewhere.
+
+** Privacy and safety
+#+INDEX: privacy
+
+The option =latex-parser-skill-confirm-remote= asks once per session before text leaves the machine.
+The local backends never ask.
+The documentation recommends a local model for unpublished data and for anything covered by a data use agreement.
+A size warning fires above a configurable character count.
+Every request and response is written to a =*latex-parser-skill-log*= buffer and never to disk unless the user saves it.
+
+* Interactive commands and key bindings
+#+INDEX: key bindings
+#+INDEX: command map
+
+The package defines a prefix keymap, =latex-parser-skill-command-map=, and binds nothing globally.
+MELPA guidelines discourage packages from claiming keys.
+The README suggests =C-c t= because =C-c= followed by a plain letter is reserved for users.
+AUCTeX uses =C-c= followed by a control key, so this suggestion does not collide with it.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Commands and suggested key bindings under the =C-c t= prefix.
+| Key       | Command                                    | Purpose                                         |
+|-----------+--------------------------------------------+-------------------------------------------------|
+| =C-c t r= | =latex-parser-skill-region=                | Parse the active region                         |
+| =C-c t b= | =latex-parser-skill-buffer=                | Parse the whole buffer                          |
+| =C-c t f= | =latex-parser-skill-file=                  | Parse a file chosen in the minibuffer           |
+| =C-c t d= | =latex-parser-skill-dwim=                  | Region when active, otherwise buffer            |
+| =C-c t v= | =latex-parser-skill-verify-buffer=         | Run Stage 3 checks only                         |
+| =C-c t m= | =latex-parser-skill-select-backend=        | Switch backend for this session                 |
+| =C-c t k= | =latex-parser-skill-cancel=                | Kill the running request                        |
+| =C-c t l= | =latex-parser-skill-show-log=              | Show the log buffer                             |
+| =C-c t p= | =latex-parser-skill-insert-preamble=       | Insert the enumitem and =\unchecked= lines      |
+| =C-c t t= | =latex-parser-skill-menu=                  | Transient menu with all of the above            |
+
+The suggested init snippet follows.
+
+#+begin_src emacs-lisp
+(use-package latex-parser-skill
+  :after tex
+  :custom
+  (latex-parser-skill-backend 'claude-code)
+  (latex-parser-skill-replacement-files '("~/dictation/rules.csv"))
+  :config
+  (define-key LaTeX-mode-map (kbd "C-c t") latex-parser-skill-command-map)
+  (define-key latex-mode-map (kbd "C-c t") latex-parser-skill-command-map))
+#+end_src
+
+A second snippet in the documentation shows a local setup with Ollama.
+
+#+begin_src emacs-lisp
+(setq latex-parser-skill-backend 'openai-compatible
+      latex-parser-skill-openai-url "http://localhost:11434/v1/chat/completions"
+      latex-parser-skill-openai-model "your-local-model"
+      latex-parser-skill-chunk-size 12000)
+#+end_src
+
+* Repository layout
+#+INDEX: repository layout
+#+INDEX: MELPA recipe
+
+#+begin_src text
+latex-parser-skill-el/
+|-- latex-parser-skill.el
+|-- latex-parser-skill-backend.el
+|-- latex-parser-skill-replace.el
+|-- latex-parser-skill-verify.el
+|-- latex-parser-skill-chunk.el
+|-- prompts/
+|   `-- transcript-parser.md
+|-- data/
+|   `-- contractions.txt
+|-- test/
+|   |-- test-helper.el
+|   |-- latex-parser-skill-input-test.el
+|   |-- latex-parser-skill-output-test.el
+|   |-- latex-parser-skill-backend-test.el
+|   |-- latex-parser-skill-replace-test.el
+|   |-- latex-parser-skill-verify-test.el
+|   |-- latex-parser-skill-chunk-test.el
+|   |-- latex-parser-skill-live-test.el
+|   `-- fixtures/
+|       |-- raw-short.txt
+|       |-- raw-long.txt
+|       |-- parsed-good.tex
+|       |-- parsed-bad-preamble.tex
+|       |-- parsed-bad-contraction.tex
+|       |-- response-anthropic.json
+|       `-- response-openai.json
+|-- docs/
+|   |-- latex-parser-skill.org
+|   |-- latex-parser-skill.texi
+|   |-- tutorial.org
+|   `-- keybindings.org
+|-- scripts/
+|   |-- lint.el
+|   `-- sync-prompt.sh
+|-- .github/workflows/test.yml
+|-- recipe/latex-parser-skill
+|-- Makefile
+|-- README.org
+|-- CHANGELOG.org
+|-- LICENSE
+`-- .gitignore
+#+end_src
+
+The MELPA recipe follows.
+The GitHub owner is =MooersLab=.
+
+#+begin_src emacs-lisp
+(latex-parser-skill :fetcher github
+                    :repo "MooersLab/latex-parser-skill-el"
+                    :files (:defaults "prompts" "data" "docs/latex-parser-skill.texi"))
+#+end_src
+
+The bundled prompt could drift from the skill.
+The script =scripts/sync-prompt.sh= copies the body of the installed =SKILL.md= into =prompts/transcript-parser.md=.
+A test compares a stored checksum so drift shows up as a failing test rather than as silent behavior change.
+
+* Makefile
+#+INDEX: Makefile
+#+INDEX: continuous integration
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Makefile targets.
+| Target         | Action                                                                  |
+|----------------+-------------------------------------------------------------------------|
+| =all=          | Runs =lint=, =compile=, =test=, and =docs=                               |
+| =compile=      | Byte-compiles with warnings treated as errors                            |
+| =test=         | Runs every ERT test with the fake backend                                |
+| =live-test=    | Runs the live tests against real backends when =LPS_LIVE=1=              |
+| =lint=         | Runs checkdoc and package-lint through =scripts/lint.el=                  |
+| =docs=         | Exports the manual to Texinfo and builds the Info file                   |
+| =sync-prompt=  | Refreshes the bundled prompt from the installed skill                    |
+| =clean=        | Removes =.elc= files and built documentation                             |
+
+#+begin_src makefile
+EMACS ?= emacs
+EL    := $(filter-out %-pkg.el,$(wildcard latex-parser-skill*.el))
+TESTS := $(wildcard test/*-test.el)
+BATCH := $(EMACS) -Q --batch -L .
+
+.PHONY: all compile test live-test lint docs sync-prompt clean
+
+all: lint compile test docs
+
+compile:
+	$(BATCH) --eval '(setq byte-compile-error-on-warn t)' -f batch-byte-compile $(EL)
+
+test:
+	$(BATCH) -L test -l test/test-helper.el $(addprefix -l ,$(TESTS)) -f ert-run-tests-batch-and-exit
+
+live-test:
+	LPS_LIVE=1 $(MAKE) test
+
+lint:
+	$(BATCH) -l scripts/lint.el $(EL)
+
+docs:
+	$(EMACS) --batch docs/latex-parser-skill.org --eval '(require (quote ox-texinfo))' -f org-texinfo-export-to-texinfo
+	makeinfo docs/latex-parser-skill.texi -o docs/latex-parser-skill.info
+
+sync-prompt:
+	sh scripts/sync-prompt.sh
+
+clean:
+	rm -f *.elc test/*.elc docs/*.info
+#+end_src
+
+The GitHub Actions workflow runs =make lint compile test= on a matrix of Emacs 28.2, 29.4, 30.2, and snapshot.
+It uses the =purcell/setup-emacs= action.
+It never runs the live tests because those need credentials.
+
+* Test plan
+#+INDEX: ERT
+#+INDEX: fake backend
+#+INDEX: golden files
+
+All default tests run offline against the =fake= backend.
+The fake backend is like a crystallographic test data set with a known answer.
+It lets the tests check the plumbing without paying for or waiting on a model.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Test files and their coverage.
+| Test file     | Coverage                                                                                 |
+|---------------+------------------------------------------------------------------------------------------|
+| =input=       | Region, buffer, and file collection. Refusal outside LaTeX modes. Empty region handling   |
+| =output=      | Each output action. Single undo group. Marker safety when the buffer changes mid-request    |
+| =backend=     | Command-line construction for =claude-code=. JSON request bodies. Response parsing fixtures |
+| =replace=     | Script discovery. Missing-script behavior. Argument list includes =--skip-ambiguous=       |
+| =verify=      | One passing golden file and one failing fixture per rule                                  |
+| =chunk=       | Splits only at blank lines. Merges TODO blocks into one final block                       |
+| =live=        | Skipped unless =LPS_LIVE=1=. One short transcript per configured backend                  |
+
+The backend tests stub =make-process= and =url-retrieve= with =cl-letf= so no network call happens.
+The replace tests use a tiny shell script in =test/fixtures= as a stand-in for an external replacement program.
+
+* Documentation
+#+INDEX: documentation
+#+INDEX: tutorial
+
+** README.org
+The README covers installation from MELPA and with =use-package :vc=, a quick start, backend setup, suggested key bindings, privacy notes, and a link to the manual.
+GitHub renders README.org directly.
+
+** Manual (docs/latex-parser-skill.org)
+The manual exports to Texinfo so =C-h i= finds it after installation.
+It documents every user option, every command, the pipeline, the verification rules, and how to register a custom backend.
+
+** Tutorial (docs/tutorial.org)
+The tutorial walks through one session with a sample non-DVR transcript shipped in =test/fixtures/raw-short.txt=.
+1. Open a new =.tex= file and paste the sample text.
+2. Insert the preamble requirements with =C-c t p=.
+3. Select the transcript and press =C-c t r=.
+4. Read the diff in the preview buffer and accept with =C-c C-c=.
+5. Run =C-c t v= to see a clean verification report.
+6. Switch to a local backend with =C-c t m= and repeat on the long sample to see chunking.
+7. Parse a file directly with =C-c t f= and open the resulting =_parsed.tex=.
+
+** Key bindings (docs/keybindings.org)
+This file holds the table from this plan, the =use-package= snippet, an alternative for users who already use =C-c t=, and the bindings inside the preview buffer.
+
+* Development phases
+#+INDEX: development phases
+#+INDEX: acceptance criteria
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Phases, deliverables, and acceptance criteria.
+| Phase | Deliverable                                       | Done when                                                         |
+|-------+---------------------------------------------------+-------------------------------------------------------------------|
+|     0 | Repository scaffold, license, Makefile, CI        | Empty package passes =make all= on all CI Emacs versions            |
+|     1 | Input collection, output actions, fake backend    | Input and output tests pass. Preview accept and reject work         |
+|     2 | Four real backends and the bundled prompt         | Backend tests pass offline. One live run succeeds per backend       |
+|     3 | Replacements, post-processing, verify, repair, chunking | Verify fixtures pass. Long transcript parses on a local model |
+|     4 | Keymap, transient menu, mode-line status, log, cancel | Every command reachable from the menu. Cancel kills cleanly     |
+|     5 | README, manual, tutorial, key binding guide       | =make docs= builds Info. Tutorial runs end to end as written       |
+|     6 | MELPA submission                                  | package-lint and checkdoc clean. melpazoid passes. PR opened        |
+
+* Settled decisions
+#+INDEX: decisions
+
+1. The GitHub owner is MooersLab and the repository is latex-parser-skill-el.
+2. The minimum Emacs version is 28.1.
+3. Stage 1 is self-contained and does not depend on whisper-dvr, so the package can go to MELPA. It ships its own contraction table and reads optional CSV rule files. An external program can still replace it through =latex-parser-skill-replacement-command=.
+4. The default backend is =claude-code=.
+5. The =gptel= backend is part of version 0.1.0.
+6. The repair pass is on for every backend.
+
+* To-do checklist
+#+INDEX: to-do list
+
+#+begin_export latex
+\begin{minted}{org}
+- [X] Settle the six open decisions
+- [X] Phase 0: create repository, LICENSE (GPL-3.0-or-later), Makefile, CI workflow
+- [X] Phase 0: write package headers with Package-Requires and pass package-lint
+- [X] Phase 1: implement region, buffer, file, and dwim commands
+- [X] Phase 1: implement the five output actions and the preview buffer
+- [X] Phase 1: write the fake backend and the input and output tests
+- [X] Phase 2: implement claude-code backend and record its flags in a test
+- [X] Phase 2: implement anthropic-api backend with auth-source
+- [ ] Phase 2: test openai-compatible backend against a running Ollama server
+- [X] Phase 2: implement optional gptel backend
+- [X] Phase 2: bundle prompts/transcript-parser.md and write sync-prompt.sh
+- [X] Phase 3: write a self-contained Stage 1 engine with optional rule files
+- [X] Phase 3: implement post-processing, verify rules, and the repair pass
+- [X] Phase 3: implement chunking and TODO merging
+- [X] Phase 4: add command map, transient menu, mode-line status, log, cancel
+- [X] Phase 5: write README.org, manual, tutorial, and key binding guide
+- [X] Phase 5: build the Info manual with make docs
+- [ ] Run make live-test with claude-code on the local computer
+- [ ] Push to GitHub and confirm the CI matrix passes
+- [ ] Phase 6: run melpazoid, tag v0.1.0, and open the MELPA pull request
+\end{minted}
+#+end_export

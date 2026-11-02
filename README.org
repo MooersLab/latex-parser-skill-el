@@ -1,0 +1,187 @@
+#+TITLE: latex-parser-skill
+#+AUTHOR: Blaine Mooers
+#+OPTIONS: toc:nil num:nil
+#+LaTeX_HEADER: \usepackage[margin=0.5in]{geometry}
+#+LaTeX_HEADER: \usepackage{booktabs}
+#+LaTeX_HEADER: \usepackage{makeidx}
+#+LaTeX_HEADER: \makeindex
+
+[[https://github.com/MooersLab/latex-parser-skill-el/actions/workflows/test.yml][https://github.com/MooersLab/latex-parser-skill-el/actions/workflows/test.yml/badge.svg]]
+[[https://www.gnu.org/licenses/gpl-3.0][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
+
+Turn raw dictated or transcribed text in an Emacs LaTeX buffer into a structured LaTeX fragment with the transcript-parser skill.
+
+* What it does
+#+INDEX: overview
+
+Select a transcript in a LaTeX buffer and press one key.
+The package returns a fragment with one =\subsubsection= per topic, =\index= keys below each heading, one sentence per line, expanded contractions, no sound descriptions such as =(coughing)=, and a closing checklist of TODO items.
+It works on the active region, the whole buffer or its document body, or a file on disk.
+
+The work runs in four stages.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: The four stages of the pipeline.
+| Stage | Name         | Kind          | What it does                                                |
+|-------+--------------+---------------+-------------------------------------------------------------|
+|     1 | Replacements | Deterministic | Expands contractions and applies your dictation rule files  |
+|     2 | Parse        | Model         | Sends the skill instructions and the text to the backend     |
+|     3 | Verify       | Deterministic | Checks the reply against the rules of the skill              |
+|     4 | Repair       | Model         | Sends the list of violations back for a corrective pass      |
+
+Stage 1 is self-contained and needs no other package.
+The model can be Claude Code, the Claude API, a local server such as Ollama, or anything set up in gptel.
+
+* Requirements
+#+INDEX: requirements
+
+- Emacs 28.1 or later.
+- One of the following for the model stages.
+  - Claude Code, signed in, for the default =claude-code= backend.
+  - A Claude API key for =anthropic-api=.
+  - A local chat completions server such as Ollama, llama.cpp, LM Studio or vLLM for =openai-compatible=.
+  - The gptel package for =gptel=.
+- AUCTeX is optional.
+
+* Installation
+#+INDEX: installation
+
+Install from MELPA with the following form.
+
+#+begin_src emacs-lisp
+(use-package latex-parser-skill
+  :ensure t
+  :defer t
+  :init
+  (with-eval-after-load 'tex
+    (define-key LaTeX-mode-map (kbd "C-c t") 'latex-parser-skill-command-map))
+  (with-eval-after-load 'tex-mode
+    (define-key latex-mode-map (kbd "C-c t") 'latex-parser-skill-command-map)))
+#+end_src
+
+Install from a clone with the following form.
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "~/6112MooersLabGitHubLabRepos/latex-parser-skill-el")
+(require 'latex-parser-skill)
+#+end_src
+
+* Quick start
+#+INDEX: quick start
+
+1. Open a =.tex= file and press =C-c t p= to add the preamble lines the output needs.
+2. Paste a transcript into the document body and select it.
+3. Press =C-c t r=.
+4. Review the result in the preview buffer and press =C-c C-c= to accept or =C-c C-k= to reject.
+5. Press =C-c t v= at any time to check a buffer against the rules.
+
+To parse a file without opening it, press =C-c t f=.
+The result goes to =NAME_parsed.tex= beside the file.
+
+The full walk-through is in [[file:docs/tutorial.org][docs/tutorial.org]].
+
+* Suggested key bindings
+#+INDEX: key bindings
+
+The package binds no keys by itself.
+Bind the prefix map under =C-c t= as shown above.
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Commands under the suggested =C-c t= prefix.
+| Key       | Command                              | Purpose                                     |
+|-----------+--------------------------------------+---------------------------------------------|
+| =C-c t r= | =latex-parser-skill-region=          | Parse the active region                     |
+| =C-c t b= | =latex-parser-skill-buffer=          | Parse the buffer or its document body       |
+| =C-c t f= | =latex-parser-skill-file=            | Parse a file and write =NAME_parsed.tex=    |
+| =C-c t d= | =latex-parser-skill-dwim=            | Region when active, otherwise buffer        |
+| =C-c t v= | =latex-parser-skill-verify-buffer=   | Run the Stage 3 checks and show a report    |
+| =C-c t s= | =latex-parser-skill-replace-region=  | Run Stage 1 alone on the region             |
+| =C-c t p= | =latex-parser-skill-insert-preamble= | Insert the preamble lines the output needs  |
+| =C-c t m= | =latex-parser-skill-select-backend=  | Switch the backend for this session         |
+| =C-c t k= | =latex-parser-skill-cancel=          | Cancel the running job                      |
+| =C-c t l= | =latex-parser-skill-show-log=        | Show the log buffer                         |
+| =C-c t t= | =latex-parser-skill-menu=            | Open the transient menu                     |
+
+More options, including the preview keys, are in [[file:docs/keybindings.org][docs/keybindings.org]].
+
+* Choosing a backend
+#+INDEX: backends
+
+#+begin_src emacs-lisp
+;; Claude Code (default).  nil uses the program's default model.
+(setq latex-parser-skill-backend 'claude-code
+      latex-parser-skill-claude-model nil)
+
+;; Claude API.  The key comes from auth-source (host api.anthropic.com)
+;; or from the ANTHROPIC_API_KEY environment variable.
+(setq latex-parser-skill-backend 'anthropic-api)
+
+;; A local model served by Ollama.
+(setq latex-parser-skill-backend 'openai-compatible
+      latex-parser-skill-openai-url "http://localhost:11434/v1/chat/completions"
+      latex-parser-skill-openai-model "your-model-tag")
+
+;; Whatever gptel is set up to use.
+(setq latex-parser-skill-backend 'gptel)
+#+end_src
+
+Long input is split at blank lines for local models, and the parsed chunks are merged with one TODO block at the end.
+Adjust the limit with =latex-parser-skill-chunk-sizes=.
+
+* Your own dictation rules
+#+INDEX: rule files
+
+Add CSV files of =trigger,replacement= lines to Stage 1.
+Triggers may hold several words.
+
+#+begin_src emacs-lisp
+(setq latex-parser-skill-replacement-files '("~/dictation/rules.csv"))
+#+end_src
+
+An external program can replace the built-in engine through =latex-parser-skill-replacement-command=.
+
+* Use from other code and from the shell
+#+INDEX: batch use
+
+#+begin_src emacs-lisp
+(latex-parser-skill-process-string
+ text (lambda (latex violations) (insert latex)))
+#+end_src
+
+#+begin_src sh
+emacs --batch -L ~/6112MooersLabGitHubLabRepos/latex-parser-skill-el \
+      -l latex-parser-skill -f latex-parser-skill-batch notes.txt
+#+end_src
+
+* Privacy
+#+INDEX: privacy
+
+The package asks once per session before a backend sends text off the computer, and it asks before sending very large requests.
+Use a local model for unpublished data and for anything covered by a data use agreement.
+
+* Documentation
+#+INDEX: documentation
+
+- [[file:docs/latex-parser-skill.org][User manual]], also installed as Info (=C-h i m latex-parser-skill=).
+- [[file:docs/tutorial.org][Tutorial]].
+- [[file:docs/keybindings.org][Key bindings]].
+- [[file:CHANGELOG.org][Changelog]].
+
+* Development
+#+INDEX: development
+
+#+begin_src sh
+make            # lint, compile, test and build the Info manual
+make test       # offline ERT suite with a fake backend
+make live-test  # also query real models (see test/latex-parser-skill-live-test.el)
+#+end_src
+
+The bundled prompt in =prompts/transcript-parser.md= is a copy of the transcript-parser skill.
+Run =make sync-prompt= after the skill changes.
+The test suite flags any drift when the skill is installed.
+
+* License
+#+INDEX: license
+
+GPL-3.0-or-later.
+The contraction table in =data/contractions.csv= comes from [[https://github.com/MooersLab/expand-contractions.el][expand-contractions.el]] by the same author.

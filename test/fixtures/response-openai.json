@@ -1,0 +1,1 @@
+{"id":"chatcmpl-1","object":"chat.completion","model":"local","choices":[{"index":0,"message":{"role":"assistant","content":"\\subsubsection{Topic}\n\\index{topic}\n\nOne sentence.\n"},"finish_reason":"stop"}]}

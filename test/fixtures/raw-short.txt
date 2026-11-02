@@ -1,0 +1,3 @@
+Okay so I'm recording this after the group meeting (clearing throat) and I don't want to forget what we decided. The crystals of the RNA duplex grew in the forty percent PEG condition and they're diffracting to about one point eight angstroms at the beamline. We can't use the old cryo protectant since it cracks the crystals.
+
+(coughing) The second thing is the molecular dynamics runs. They haven't finished yet but the first hundred nanoseconds look stable and the base pairs aren't fraying. I need to email Sam about more cluster time and I'll write the methods paragraph this week.

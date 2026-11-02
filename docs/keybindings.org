@@ -1,0 +1,98 @@
+#+TITLE: Suggested Key Bindings for latex-parser-skill
+#+AUTHOR: Blaine Mooers
+#+OPTIONS: toc:nil num:nil
+#+LaTeX_HEADER: \usepackage[margin=0.5in]{geometry}
+#+LaTeX_HEADER: \usepackage{booktabs}
+#+LaTeX_HEADER: \usepackage{makeidx}
+#+LaTeX_HEADER: \makeindex
+
+* Key Bindings
+#+INDEX: key bindings
+#+INDEX: command map
+
+The package binds no keys by itself, as MELPA asks.
+It provides the prefix keymap =latex-parser-skill-command-map= and the transient menu =latex-parser-skill-menu=.
+The suggested prefix is =C-c t=.
+Emacs reserves =C-c= followed by a plain letter for users, and AUCTeX uses =C-c= followed by a control key, so the two never collide.
+
+** The command map
+#+INDEX: prefix keys
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Commands under the suggested =C-c t= prefix.
+| Key       | Command                              | Purpose                                     |
+|-----------+--------------------------------------+---------------------------------------------|
+| =C-c t r= | =latex-parser-skill-region=          | Parse the active region                     |
+| =C-c t b= | =latex-parser-skill-buffer=          | Parse the buffer or its document body       |
+| =C-c t f= | =latex-parser-skill-file=            | Parse a file and write =NAME_parsed.tex=    |
+| =C-c t d= | =latex-parser-skill-dwim=            | Region when active, otherwise buffer        |
+| =C-c t v= | =latex-parser-skill-verify-buffer=   | Run the Stage 3 checks and show a report    |
+| =C-c t s= | =latex-parser-skill-replace-region=  | Run Stage 1 alone on the region             |
+| =C-c t p= | =latex-parser-skill-insert-preamble= | Insert the preamble lines the output needs  |
+| =C-c t m= | =latex-parser-skill-select-backend=  | Switch the backend for this session         |
+| =C-c t k= | =latex-parser-skill-cancel=          | Cancel the running job                      |
+| =C-c t l= | =latex-parser-skill-show-log=        | Show the log buffer                         |
+| =C-c t t= | =latex-parser-skill-menu=            | Open the transient menu                     |
+
+** Keys in the preview buffer
+#+INDEX: preview keys
+
+#+ATTR_LATEX: :booktabs t
+#+CAPTION: Keys in =*latex-parser-skill-preview*=.
+| Key       | Command                              |
+|-----------+--------------------------------------|
+| =C-c C-c= | =latex-parser-skill-preview-accept=  |
+| =C-c C-k= | =latex-parser-skill-preview-reject=  |
+| =C-c C-d= | =latex-parser-skill-preview-diff=    |
+| =C-c C-v= | =latex-parser-skill-verify-buffer=   |
+
+** Setup with use-package
+#+INDEX: use-package
+
+The following form binds the prefix in both LaTeX modes.
+It works in Emacs 28 and later.
+
+#+begin_src emacs-lisp
+(use-package latex-parser-skill
+  :ensure t
+  :defer t
+  :init
+  (with-eval-after-load 'tex
+    (define-key LaTeX-mode-map (kbd "C-c t") 'latex-parser-skill-command-map))
+  (with-eval-after-load 'tex-mode
+    (define-key latex-mode-map (kbd "C-c t") 'latex-parser-skill-command-map)))
+#+end_src
+
+Binding the quoted symbol rather than the keymap value lets the autoload load the package on the first key press.
+
+** Setup without use-package
+#+INDEX: init file
+
+#+begin_src emacs-lisp
+(require 'latex-parser-skill)
+(with-eval-after-load 'tex
+  (define-key LaTeX-mode-map (kbd "C-c t") latex-parser-skill-command-map))
+(with-eval-after-load 'tex-mode
+  (define-key latex-mode-map (kbd "C-c t") latex-parser-skill-command-map))
+#+end_src
+
+** If C-c t is taken
+#+INDEX: alternative prefix
+
+Pick any other =C-c= letter, for example =C-c p=.
+Users who prefer one key can bind the transient menu instead of the prefix map.
+
+#+begin_src emacs-lisp
+(with-eval-after-load 'tex
+  (define-key LaTeX-mode-map (kbd "C-c p") 'latex-parser-skill-menu))
+#+end_src
+
+** Global access to the file command
+#+INDEX: global binding
+
+The file command does not need a LaTeX buffer.
+A global binding makes it reachable from Dired or any other buffer.
+
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-c T") 'latex-parser-skill-file)
+#+end_src

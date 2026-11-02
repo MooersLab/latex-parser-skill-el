@@ -1,0 +1,863 @@
+\input texinfo    @c -*- texinfo -*-
+@c %**start of header
+@setfilename latex-parser-skill.info
+@settitle latex-parser-skill User Manual
+@documentencoding UTF-8
+@documentlanguage en
+@c %**end of header
+
+@dircategory Emacs
+@direntry
+* latex-parser-skill: (latex-parser-skill). Parse transcripts in LaTeX buffers with a language model.
+@end direntry
+
+@finalout
+@titlepage
+@title latex-parser-skill User Manual
+@subtitle for version 0.1.0
+@author Blaine Mooers
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top latex-parser-skill User Manual
+@end ifnottex
+
+@menu
+* Introduction::
+* Installation::
+* Backends::
+* Stage 1 replacements::
+* Verification rules::
+* Commands::
+* Programmatic and batch use::
+* Privacy::
+* Updating the bundled prompt::
+* Tutorial::
+* Key Bindings::
+* Development::
+* Index::
+
+@detailmenu
+--- The Detailed Node Listing ---
+
+Backends
+
+* Claude Code::
+* Claude API::
+* Local models::
+* gptel::
+* Writing a new backend::
+
+Commands
+
+* Where the result goes::
+
+Tutorial
+
+* Check the backend::
+* Open a @LaTeX{} buffer::
+* Add the preamble lines::
+* Paste the transcript::
+* Parse the region::
+* Review the preview::
+* Verify the buffer::
+* Switch to a local model::
+* See chunking at work::
+* Parse a file without opening it::
+* Use your own dictation rules::
+* Read the log::
+
+Key Bindings
+
+* The command map::
+* Keys in the preview buffer::
+* Setup with use-package::
+* Setup without use-package::
+* If C-c t is taken::
+* Global access to the file command::
+
+@end detailmenu
+@end menu
+
+@node Introduction
+@chapter Introduction
+
+@cindex introduction
+@cindex transcript-parser skill
+
+latex-parser-skill turns raw dictated or transcribed text in a @LaTeX{} buffer into a structured @LaTeX{} fragment.
+The fragment has one @samp{\subsubsection} per topic, @samp{\index} keys below each heading, one sentence per line, expanded contractions, and a closing checklist of TODO items.
+The rules come from the transcript-parser skill, and a copy of its instructions ships with the package.
+
+The package is meant for text that did not pass through a dictation tool with its own clean-up step.
+That text still holds contractions and dictation errors, so the package fixes the predictable ones before the model sees it.
+
+An analogy from crystallography describes the four stages.
+Stage 1 is like data reduction because it is deterministic and repeatable.
+Stage 2 is like model building because it needs judgment.
+Stage 3 is like validation because it checks the model against fixed rules.
+Stage 4 is like a short round of rebuilding guided by the validation report.
+
+@float Table,org4a661ed
+@multitable {aaaaa} {aaaaaaaaaaaa} {aaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Stage
+@tab Name
+@tab Kind
+@tab What it does
+@item 1
+@tab Replacements
+@tab Deterministic
+@tab Expands contractions and applies your dictation rule files
+@item 2
+@tab Parse
+@tab Model
+@tab Sends the skill instructions and the text to the backend
+@item 3
+@tab Verify
+@tab Deterministic
+@tab Checks the reply against the rules of the skill
+@item 4
+@tab Repair
+@tab Model
+@tab Sends the list of violations back for a corrective pass
+@end multitable
+@caption{The four stages of the pipeline.}
+@end float
+
+@node Installation
+@chapter Installation
+
+@cindex installation
+@cindex MELPA
+
+The package needs Emacs 28.1 or later.
+Install it from MELPA with @samp{M-x package-install RET latex-parser-skill RET}.
+
+To install from the repository with Emacs 29 or later, use the @samp{:vc} keyword of @samp{use-package}.
+
+@lisp
+(use-package latex-parser-skill
+  :vc (:url "https://github.com/MooersLab/latex-parser-skill-el" :rev :newest))
+@end lisp
+
+A manual install needs only the repository on the @samp{load-path}.
+
+@lisp
+(add-to-list 'load-path "~/6112MooersLabGitHubLabRepos/latex-parser-skill-el")
+(require 'latex-parser-skill)
+@end lisp
+
+See the chapter on key bindings for the suggested @samp{C-c t} prefix.
+
+@node Backends
+@chapter Backends
+
+@cindex backends
+
+A backend sends the system prompt and one user message to a model and returns the reply.
+Every backend is asynchronous, so Emacs stays responsive.
+Choose the default with @samp{latex-parser-skill-backend} and switch for the session with @samp{C-c t m}.
+
+@float Table,org568c493
+@multitable {aaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaa}
+@headitem Backend
+@tab Transport
+@tab Leaves the computer
+@item @samp{claude-code}
+@tab The @samp{claude} program in print mode
+@tab Yes
+@item @samp{anthropic-api}
+@tab The Claude Messages API over HTTPS
+@tab Yes
+@item @samp{openai-compatible}
+@tab A @samp{/v1/chat/completions} server
+@tab Only for a remote URL
+@item @samp{gptel}
+@tab Whatever model gptel is set up to use
+@tab Yes, unless you say no
+@end multitable
+@caption{Built-in backends.}
+@end float
+
+@menu
+* Claude Code::
+* Claude API::
+* Local models::
+* gptel::
+* Writing a new backend::
+@end menu
+
+@node Claude Code
+@section Claude Code
+
+@cindex claude-code backend
+
+This is the default backend.
+It runs @samp{claude -p} with the transcript on standard input.
+The bundled prompt replaces the system prompt, and every tool is turned off with @samp{--tools ""}, so the model only writes text.
+Sessions are not saved, because the command passes @samp{--no-session-persistence}.
+
+@lisp
+(setq latex-parser-skill-claude-model "sonnet")   ; nil uses the program default
+@end lisp
+
+Set @samp{latex-parser-skill-claude-prompt-source} to @samp{skill} to rely on a transcript-parser skill installed in Claude Code instead of the bundled prompt.
+Extra command-line arguments go in @samp{latex-parser-skill-claude-extra-args}.
+
+@node Claude API
+@section Claude API
+
+@cindex anthropic-api backend
+@cindex auth-source
+
+The key comes from auth-source under the host @samp{api.anthropic.com}, or from the environment variable @samp{ANTHROPIC_API_KEY}.
+A line in @samp{~/.authinfo.gpg} looks like this.
+
+@example
+machine api.anthropic.com password sk-ant-...
+@end example
+
+The model is @samp{latex-parser-skill-anthropic-model}.
+
+@node Local models
+@section Local models
+
+@cindex openai-compatible backend
+@cindex Ollama
+@cindex llama.cpp
+
+Any server that speaks the chat completions protocol works, including Ollama, the llama.cpp server, LM Studio and vLLM@.
+The default URL is the Ollama server on this computer.
+
+@lisp
+(setq latex-parser-skill-openai-url "http://localhost:11434/v1/chat/completions"
+      latex-parser-skill-openai-model "your-model-tag")
+@end lisp
+
+A server that needs a key reads it from auth-source under the host of the URL@.
+Requests set the temperature to zero.
+Replies from reasoning models often begin with a @samp{<think>} block, which the package removes.
+
+Local models have smaller context windows.
+@samp{latex-parser-skill-chunk-sizes} splits long input at blank lines for named backends, and its default limits @samp{openai-compatible} to 12000 characters per request.
+The trade-off is that a topic that spans two chunks may get two headings.
+The merge step collects every TODO item into one block at the end.
+
+@node gptel
+@section gptel
+
+@cindex gptel backend
+
+The gptel backend reuses the model that gptel already knows about.
+It uses @samp{gptel-backend} and @samp{gptel-model} unless @samp{latex-parser-skill-gptel-backend} or @samp{latex-parser-skill-gptel-model} say otherwise.
+gptel is optional, and the package loads it only when this backend runs.
+Set @samp{latex-parser-skill-gptel-remote} to nil when gptel talks to a local server, so that no confirmation is asked.
+
+@node Writing a new backend
+@section Writing a new backend
+
+@cindex custom backend
+
+Register a function of four arguments.
+It receives the system prompt, the user message, a success callback and an error callback, and it returns a handle.
+
+@lisp
+(latex-parser-skill-register-backend
+ 'my-backend
+ :request (lambda (system text callback errback)
+            (my-send system text callback errback))
+ :remote t
+ :cancel (lambda (handle) (my-abort handle))
+ :description "My model server")
+@end lisp
+
+The default cancel function kills a process or a buffer, so many backends do not need @samp{:cancel}.
+
+@node Stage 1 replacements
+@chapter Stage 1 replacements
+
+@cindex Stage 1
+@cindex contractions
+@cindex rule files
+
+Stage 1 is self-contained and needs no other package.
+It reads the bundled contraction table, then each file in @samp{latex-parser-skill-replacement-files}, then @samp{latex-parser-skill-replacement-alist}.
+A later source overrides an earlier one for the same trigger.
+
+A rule file is a CSV file of @samp{trigger,replacement} lines.
+Lines that start with @samp{#} are comments, and a header line is skipped.
+Triggers may hold several words.
+Matching ignores case, respects word boundaries, skips @LaTeX{} commands and comments, and keeps the case of the original.
+
+Contractions that end in @samp{'s} or @samp{'d} have two readings, such as "it's" for "it is" or "it has".
+By default Stage 1 leaves them for the model, which reads the whole sentence.
+Set @samp{latex-parser-skill-skip-ambiguous} to nil to expand them with the first reading.
+
+Triggers listed in @samp{latex-parser-skill-replacement-deny} never fire.
+Set @samp{latex-parser-skill-run-replacements} to nil to skip the stage.
+
+An external program can replace the built-in engine.
+The string @samp{%f} in an argument becomes the name of a temporary file that holds the text, and the program prints the result.
+
+@lisp
+(setq latex-parser-skill-replacement-command
+      '("python3" "/path/to/apply_replacements.py" "%f" "--skip-ambiguous" "-o" "-"))
+@end lisp
+
+@node Verification rules
+@chapter Verification rules
+
+@cindex verification
+@cindex violations
+
+Stage 3 mirrors the Verification section of the skill.
+Errors trigger the repair pass, and warnings only appear in the report.
+
+@float Table,org28741b0
+@multitable {aaaaaaaaaaaaaa} {aaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Check
+@tab Level
+@tab Rule
+@item @samp{preamble}
+@tab Error
+@tab No @samp{\documentclass}, @samp{\usepackage} or document environment lines
+@item @samp{index}
+@tab Error
+@tab Every @samp{\subsubsection} is followed by an @samp{\index} line
+@item @samp{contraction}
+@tab Error
+@tab No contraction from the table remains, and possessives are fine
+@item @samp{sound}
+@tab Error
+@tab No sound description such as @samp{(coughing)} remains
+@item @samp{todo}
+@tab Error
+@tab The TODO block is closed and comes last
+@item @samp{todo}
+@tab Warning
+@tab No TODO block was found
+@item @samp{dash}
+@tab Error
+@tab No em-dash or triple hyphen appears
+@item @samp{one-sentence}
+@tab Warning
+@tab A line may hold two sentences
+@end multitable
+@caption{Checks run by Stage 3.}
+@end float
+
+Choose the checks with @samp{latex-parser-skill-verify-checks} and extend the sound list with @samp{latex-parser-skill-sound-descriptions}.
+The repair pass runs for every backend.
+@samp{latex-parser-skill-repair-attempts} sets how many passes each chunk may get, and zero turns the stage off.
+
+@node Commands
+@chapter Commands
+
+@cindex commands
+
+@float Table,org2c9e9b4
+@multitable {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Command
+@tab Purpose
+@item @samp{latex-parser-skill-region}
+@tab Parse the active region
+@item @samp{latex-parser-skill-buffer}
+@tab Parse the buffer, or only its document body
+@item @samp{latex-parser-skill-dwim}
+@tab Region when active, otherwise buffer
+@item @samp{latex-parser-skill-file}
+@tab Parse a file and write @samp{NAME_parsed.tex}
+@item @samp{latex-parser-skill-verify-buffer}
+@tab Run Stage 3 on the region or body and show a report
+@item @samp{latex-parser-skill-replace-region}
+@tab Run Stage 1 alone on the region
+@item @samp{latex-parser-skill-insert-preamble}
+@tab Insert the preamble lines that the output needs
+@item @samp{latex-parser-skill-select-backend}
+@tab Switch the backend for this session
+@item @samp{latex-parser-skill-cancel}
+@tab Cancel the running job
+@item @samp{latex-parser-skill-show-log}
+@tab Show the log buffer
+@item @samp{latex-parser-skill-menu}
+@tab Open the transient menu
+@end multitable
+@caption{Interactive commands.}
+@end float
+
+The region and buffer commands run only in @LaTeX{} modes.
+Set @samp{latex-parser-skill-check-mode} to nil to lift that limit.
+One job runs at a time.
+
+@menu
+* Where the result goes::
+@end menu
+
+@node Where the result goes
+@section Where the result goes
+
+@cindex output actions
+@cindex preview buffer
+
+@samp{latex-parser-skill-output-action} decides what happens to the result of a region or buffer command.
+
+@float Table,orgaf130d8
+@multitable {aaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Value
+@tab Behavior
+@item @samp{preview}
+@tab Default. Shows the result for review before anything is replaced
+@item @samp{replace}
+@tab Replaces the source text in one undo step
+@item @samp{insert-after}
+@tab Inserts the result after the source text
+@item @samp{new-buffer}
+@tab Opens the result in a new buffer
+@item @samp{file}
+@tab Writes @samp{NAME_parsed.tex} beside the buffer's file
+@end multitable
+@caption{Output actions.}
+@end float
+
+The file command follows @samp{latex-parser-skill-file-output-action}, whose default is @samp{file}.
+@samp{latex-parser-skill-overwrite} decides what happens when the output file exists.
+
+The package remembers the source text.
+When the source changed during the request, it refuses to replace it and opens the result in a new buffer.
+
+@node Programmatic and batch use
+@chapter Programmatic and batch use
+
+@cindex batch use
+@cindex audio workflow
+
+Other code can call the pipeline directly.
+This suits an audio-to-@LaTeX{} workflow that already produces a transcript file.
+
+@lisp
+(latex-parser-skill-process-string
+ text
+ (lambda (latex violations) (insert latex))
+ :backend 'claude-code
+ :errback (lambda (msg) (message "Failed: %s" msg)))
+@end lisp
+
+@samp{latex-parser-skill-process-string-sync} waits for the result and returns a cons of the fragment and the violations.
+@samp{latex-parser-skill-finished-hook} runs after every delivery with the same two values.
+From the shell, the batch entry point writes @samp{NAME_parsed.tex} for each file.
+
+@example
+emacs --batch -L ~/6112MooersLabGitHubLabRepos/latex-parser-skill-el \
+      -l latex-parser-skill -f latex-parser-skill-batch notes.txt
+@end example
+
+@node Privacy
+@chapter Privacy
+
+@cindex privacy
+
+With @samp{latex-parser-skill-confirm-remote} on, the package asks once per session before a backend sends text off the computer.
+A request larger than @samp{latex-parser-skill-warn-size} characters asks first too.
+Use a local model for unpublished data and for anything covered by a data use agreement.
+The log buffer keeps requests and replies in memory only, and nothing is written to disk unless you save it.
+
+@node Updating the bundled prompt
+@chapter Updating the bundled prompt
+
+@cindex prompt file
+@cindex sync-prompt
+
+@samp{latex-parser-skill-prompt-file} points at @samp{prompts/transcript-parser.md}.
+It may point at an installed @samp{SKILL.md} instead, and the front matter is removed before use.
+@samp{make sync-prompt} copies the body of the installed skill into the bundled file.
+The test suite compares the two whenever the skill is installed, so drift shows up as a failing test.
+
+@node Tutorial
+@chapter Tutorial
+
+@cindex tutorial
+
+This tutorial takes about fifteen minutes.
+It walks through one session with a short transcript that did not pass through a dictation tool with its own clean-up step.
+The transcript ships with the package as @samp{test/fixtures/raw-short.txt}.
+
+The tutorial assumes the suggested key bindings under @samp{C-c t}.
+The section on key bindings shows how to set them up.
+
+@menu
+* Check the backend::
+* Open a @LaTeX{} buffer::
+* Add the preamble lines::
+* Paste the transcript::
+* Parse the region::
+* Review the preview::
+* Verify the buffer::
+* Switch to a local model::
+* See chunking at work::
+* Parse a file without opening it::
+* Use your own dictation rules::
+* Read the log::
+@end menu
+
+@node Check the backend
+@section Check the backend
+
+@cindex backend!check
+
+The default backend is @samp{claude-code}.
+It runs the @samp{claude} program in print mode, so Claude Code must be installed and signed in.
+Open a terminal and run the following command to confirm that the program answers.
+
+@example
+claude -p "Reply with the word ready."
+@end example
+
+If you would rather start with a local model, read the section on switching to a local model first.
+
+@node Open a @LaTeX{} buffer
+@section Open a @LaTeX{} buffer
+
+@cindex LaTeX buffer
+
+Visit a new file called @samp{tutorial.tex}.
+Emacs opens it in @samp{LaTeX-mode} when AUC@TeX{} is installed, or in the built-in @samp{latex-mode} otherwise.
+Type a minimal document skeleton.
+
+@example
+\documentclass@{article@}
+\begin@{document@}
+
+\end@{document@}
+@end example
+
+@node Add the preamble lines
+@section Add the preamble lines
+
+@cindex preamble lines
+@cindex unchecked macro
+
+The parsed output uses @samp{\index} and a checklist whose items carry the @samp{\unchecked} label.
+Press @samp{C-c t p}.
+The command inserts @samp{enumitem}, @samp{amssymb}, @samp{makeidx}, @samp{\makeindex} and a definition of @samp{\unchecked} above @samp{\begin@{document@}}.
+It skips any line that is already present, so pressing it twice does no harm.
+
+@node Paste the transcript
+@section Paste the transcript
+
+@cindex transcript
+
+Put the cursor on the blank line inside the document body.
+Insert the sample with @samp{M-x insert-file} and choose @samp{test/fixtures/raw-short.txt}.
+The text has contractions, two sound descriptions such as @samp{(coughing)}, and a causal "since".
+
+@node Parse the region
+@section Parse the region
+
+@cindex region command
+
+Select the two paragraphs of the transcript and press @samp{C-c t r}.
+Emacs asks once per session whether text may leave the computer.
+Answer @samp{y}.
+The mode line shows @samp{LPS[...]} while the request runs, and Emacs stays responsive.
+
+Behind the scenes four stages run.
+Stage 1 expands the unambiguous contractions with the bundled table.
+Stage 2 sends the text and the transcript-parser instructions to the model.
+Stage 3 checks the reply against the rules of the skill.
+Stage 4 sends any rule violation back to the model for one repair pass.
+
+@node Review the preview
+@section Review the preview
+
+@cindex preview buffer
+
+A buffer called @samp{*latex-parser-skill-preview*} opens with the result.
+The header line lists the keys.
+
+@float Table,org441e0dc
+@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Key
+@tab Action
+@item @samp{C-c C-c}
+@tab Accept the result, including any edits you made
+@item @samp{C-c C-k}
+@tab Reject the result and keep the source text
+@item @samp{C-c C-d}
+@tab Show a unified diff between the source and the result
+@item @samp{C-c C-v}
+@tab Run the Stage 3 checks again on the preview
+@end multitable
+@caption{Keys in the preview buffer.}
+@end float
+
+Fix anything you dislike directly in the preview.
+Then press @samp{C-c C-c}.
+The result replaces the transcript in one undo step, so @samp{C-/} brings the transcript back.
+
+@node Verify the buffer
+@section Verify the buffer
+
+@cindex verification report
+
+Press @samp{C-c t v}.
+The command runs the Stage 3 checks on the document body and opens @samp{*latex-parser-skill-report*}.
+Each entry links to its line.
+A clean result reports no violations.
+Try typing @samp{don't} somewhere in the body and run the check again to see an entry appear.
+
+@node Switch to a local model
+@section Switch to a local model
+
+@cindex local model
+@cindex Ollama
+
+Start Ollama and pull a model that follows instructions well.
+Then tell the package about it.
+
+@lisp
+(setq latex-parser-skill-openai-model "your-model-tag")
+@end lisp
+
+Press @samp{C-c t m} and choose @samp{openai-compatible}.
+The default URL points at Ollama on this computer, so no question about sending text appears.
+
+@node See chunking at work
+@section See chunking at work
+
+@cindex chunking
+
+Insert @samp{test/fixtures/raw-long.txt} into a new buffer in @samp{latex-mode} and run @samp{C-c t b}.
+The openai-compatible backend splits input longer than 12000 characters by default.
+To watch the split happen on this short file, lower the size first.
+
+@lisp
+(setq latex-parser-skill-chunk-sizes '((openai-compatible . 250)))
+@end lisp
+
+The mode line counts the chunks.
+The result holds one heading group per chunk and a single TODO block at the end.
+
+@node Parse a file without opening it
+@section Parse a file without opening it
+
+@cindex file command
+
+Press @samp{C-c t f} and choose @samp{raw-short.txt}.
+The package writes @samp{raw-short_parsed.tex} beside it and reports the path.
+This matches the naming rule of the transcript-parser skill.
+
+@node Use your own dictation rules
+@section Use your own dictation rules
+
+@cindex rule files
+
+Export your dictation replacements to a CSV file of @samp{trigger,replacement} lines.
+Add the file to Stage 1.
+
+@lisp
+(setq latex-parser-skill-replacement-files '("~/dictation/rules.csv"))
+@end lisp
+
+Triggers may hold several words, such as @samp{settle cassin}.
+Run @samp{C-c t s} on a region to try Stage 1 alone without calling any model.
+
+@node Read the log
+@section Read the log
+
+@cindex log buffer
+
+Press @samp{C-c t l}.
+The log lists each request, each reply, the number of Stage 1 replacements, and the timing.
+Set @samp{latex-parser-skill-log-content} to nil to keep only sizes and timings.
+
+@node Key Bindings
+@chapter Key Bindings
+
+@cindex key bindings
+@cindex command map
+
+The package binds no keys by itself, as MELPA asks.
+It provides the prefix keymap @samp{latex-parser-skill-command-map} and the transient menu @samp{latex-parser-skill-menu}.
+The suggested prefix is @samp{C-c t}.
+Emacs reserves @samp{C-c} followed by a plain letter for users, and AUC@TeX{} uses @samp{C-c} followed by a control key, so the two never collide.
+
+@menu
+* The command map::
+* Keys in the preview buffer::
+* Setup with use-package::
+* Setup without use-package::
+* If C-c t is taken::
+* Global access to the file command::
+@end menu
+
+@node The command map
+@section The command map
+
+@cindex prefix keys
+
+@float Table,org33b7471
+@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Key
+@tab Command
+@tab Purpose
+@item @samp{C-c t r}
+@tab @samp{latex-parser-skill-region}
+@tab Parse the active region
+@item @samp{C-c t b}
+@tab @samp{latex-parser-skill-buffer}
+@tab Parse the buffer or its document body
+@item @samp{C-c t f}
+@tab @samp{latex-parser-skill-file}
+@tab Parse a file and write @samp{NAME_parsed.tex}
+@item @samp{C-c t d}
+@tab @samp{latex-parser-skill-dwim}
+@tab Region when active, otherwise buffer
+@item @samp{C-c t v}
+@tab @samp{latex-parser-skill-verify-buffer}
+@tab Run the Stage 3 checks and show a report
+@item @samp{C-c t s}
+@tab @samp{latex-parser-skill-replace-region}
+@tab Run Stage 1 alone on the region
+@item @samp{C-c t p}
+@tab @samp{latex-parser-skill-insert-preamble}
+@tab Insert the preamble lines the output needs
+@item @samp{C-c t m}
+@tab @samp{latex-parser-skill-select-backend}
+@tab Switch the backend for this session
+@item @samp{C-c t k}
+@tab @samp{latex-parser-skill-cancel}
+@tab Cancel the running job
+@item @samp{C-c t l}
+@tab @samp{latex-parser-skill-show-log}
+@tab Show the log buffer
+@item @samp{C-c t t}
+@tab @samp{latex-parser-skill-menu}
+@tab Open the transient menu
+@end multitable
+@caption{Commands under the suggested prefix.}
+@end float
+
+@node Keys in the preview buffer
+@section Keys in the preview buffer
+
+@cindex preview keys
+
+@float Table,orgb40ee1c
+@multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Key
+@tab Command
+@item @samp{C-c C-c}
+@tab @samp{latex-parser-skill-preview-accept}
+@item @samp{C-c C-k}
+@tab @samp{latex-parser-skill-preview-reject}
+@item @samp{C-c C-d}
+@tab @samp{latex-parser-skill-preview-diff}
+@item @samp{C-c C-v}
+@tab @samp{latex-parser-skill-verify-buffer}
+@end multitable
+@caption{Keys in .}
+@end float
+
+@node Setup with use-package
+@section Setup with use-package
+
+@cindex use-package
+
+The following form binds the prefix in both @LaTeX{} modes.
+It works in Emacs 28 and later.
+
+@lisp
+(use-package latex-parser-skill
+  :ensure t
+  :defer t
+  :init
+  (with-eval-after-load 'tex
+    (define-key LaTeX-mode-map (kbd "C-c t") 'latex-parser-skill-command-map))
+  (with-eval-after-load 'tex-mode
+    (define-key latex-mode-map (kbd "C-c t") 'latex-parser-skill-command-map)))
+@end lisp
+
+Binding the quoted symbol rather than the keymap value lets the autoload load the package on the first key press.
+
+@node Setup without use-package
+@section Setup without use-package
+
+@cindex init file
+
+@lisp
+(require 'latex-parser-skill)
+(with-eval-after-load 'tex
+  (define-key LaTeX-mode-map (kbd "C-c t") latex-parser-skill-command-map))
+(with-eval-after-load 'tex-mode
+  (define-key latex-mode-map (kbd "C-c t") latex-parser-skill-command-map))
+@end lisp
+
+@node If C-c t is taken
+@section If C-c t is taken
+
+@cindex alternative prefix
+
+Pick any other @samp{C-c} letter, for example @samp{C-c p}.
+Users who prefer one key can bind the transient menu instead of the prefix map.
+
+@lisp
+(with-eval-after-load 'tex
+  (define-key LaTeX-mode-map (kbd "C-c p") 'latex-parser-skill-menu))
+@end lisp
+
+@node Global access to the file command
+@section Global access to the file command
+
+@cindex global binding
+
+The file command does not need a @LaTeX{} buffer.
+A global binding makes it reachable from Dired or any other buffer.
+
+@lisp
+(global-set-key (kbd "C-c T") 'latex-parser-skill-file)
+@end lisp
+
+@node Development
+@chapter Development
+
+@cindex Makefile
+@cindex tests
+
+@float Table,org685adce
+@multitable {aaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@headitem Target
+@tab Action
+@item @samp{all}
+@tab Runs @samp{lint}, @samp{compile}, @samp{test} and @samp{docs}
+@item @samp{compile}
+@tab Byte-compiles with warnings treated as errors
+@item @samp{test}
+@tab Runs the offline ERT suite with a fake backend
+@item @samp{live-test}
+@tab Also runs the live tests against real backends
+@item @samp{lint}
+@tab Runs checkdoc and package-lint
+@item @samp{docs}
+@tab Exports this manual to Texinfo and builds the Info file
+@item @samp{sync-prompt}
+@tab Refreshes the bundled prompt from the installed skill
+@item @samp{indent}
+@tab Re-indents every Lisp file
+@item @samp{clean}
+@tab Removes compiled and generated files
+@end multitable
+@caption{Makefile targets.}
+@end float
+
+The live tests run with @samp{LPS_LIVE=1}.
+@samp{LPS_LIVE_BACKENDS} names the backends to try, and @samp{LPS_OPENAI_MODEL} names the local model.
+
+@node Index
+@chapter Index
+
+@printindex cp
+
+@bye

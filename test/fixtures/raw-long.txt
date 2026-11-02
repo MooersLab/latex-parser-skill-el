@@ -1,0 +1,9 @@
+First topic. We talked about the crystallization screen and I don't think the sodium chloride gradient helped. The drops dried out after three days.
+
+Second topic. The diffraction data from the synchrotron trip are in. They're good to two angstroms and the space group looks like P 2(1) 2(1) 2(1).
+
+Third topic. The molecular dynamics simulations haven't converged. We'll extend them by another two hundred nanoseconds.
+
+Fourth topic. The manuscript draft needs a new figure for the solvent structure. I'll make it in PyMOL tomorrow.
+
+Fifth topic. The workshop schedule isn't final. We need to book the room and send the announcement.
