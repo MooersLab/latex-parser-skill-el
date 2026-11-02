@@ -188,8 +188,21 @@ make live-test  # also query real models (see test/latex-parser-skill-live-test.
 The bundled prompt in =prompts/transcript-parser.md= is a copy of the transcript-parser skill.
 Run =make check-prompt= to compare it with your installed skill, and =make sync-prompt= to copy the installed skill into the package.
 
-* License
-#+INDEX: license
 
-GPL-3.0-or-later.
-The contraction table in =data/contractions.csv= comes from [[https://github.com/MooersLab/expand-contractions.el][expand-contractions.el]] by the same author.
+## License
+
+Copyright (C) 2026 Blaine Mooers.
+
+latex-tempo is free software released under the GNU General Public License, version 3 or (at your option) any later version. See [LICENSE](LICENSE). This license is accepted by MELPA.
+
+## Sources of funding
+
+- NIH: R01 CA242845
+- NIH: R01 AI088011
+- NIH: P30 CA225520 (PI: R. Mannel)
+- NIH: P20 GM103640 and P30 GM145423 (PI: A. West)
+
+## Author
+
+Blaine Mooers, Department of Biochemistry and Physiology, University of Oklahoma Health Campus. blaine-mooers@ou.edu
+
