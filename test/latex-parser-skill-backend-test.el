@@ -27,10 +27,12 @@
       (delete-file file))))
 
 (ert-deftest lps-prompt-matches-installed-skill ()
-  "Detect drift between the bundled prompt and an installed skill."
-  (let ((skill (or (getenv "LPS_SKILL_FILE")
-                   (expand-file-name "~/.claude/skills/transcript-parser/SKILL.md"))))
-    (skip-unless (file-readable-p skill))
+  "Detect drift between the bundled prompt and an installed skill.
+Runs only when LPS_SKILL_FILE names a SKILL.md file, as `make
+check-prompt' does, so that a plain test run never depends on the
+skills installed on one computer."
+  (let ((skill (getenv "LPS_SKILL_FILE")))
+    (skip-unless (and skill (file-readable-p skill)))
     (let ((bundled (with-temp-buffer
                      (insert-file-contents
                       (latex-parser-skill-data-file "prompts/transcript-parser.md"))

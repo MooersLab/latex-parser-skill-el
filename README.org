@@ -177,8 +177,7 @@ make live-test  # also query real models (see test/latex-parser-skill-live-test.
 #+end_src
 
 The bundled prompt in =prompts/transcript-parser.md= is a copy of the transcript-parser skill.
-Run =make sync-prompt= after the skill changes.
-The test suite flags any drift when the skill is installed.
+Run =make check-prompt= to compare it with your installed skill, and =make sync-prompt= to copy the installed skill into the package.
 
 * License
 #+INDEX: license

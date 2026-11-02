@@ -101,7 +101,7 @@ Stage 2 is like model building because it needs judgment.
 Stage 3 is like validation because it checks the model against fixed rules.
 Stage 4 is like a short round of rebuilding guided by the validation report.
 
-@float Table,org4a661ed
+@float Table,org7b87a5e
 @multitable {aaaaa} {aaaaaaaaaaaa} {aaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Stage
 @tab Name
@@ -161,7 +161,7 @@ A backend sends the system prompt and one user message to a model and returns th
 Every backend is asynchronous, so Emacs stays responsive.
 Choose the default with @samp{latex-parser-skill-backend} and switch for the session with @samp{C-c t m}.
 
-@float Table,org568c493
+@float Table,org0c45f65
 @multitable {aaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaa}
 @headitem Backend
 @tab Transport
@@ -316,7 +316,7 @@ The string @samp{%f} in an argument becomes the name of a temporary file that ho
 Stage 3 mirrors the Verification section of the skill.
 Errors trigger the repair pass, and warnings only appear in the report.
 
-@float Table,org28741b0
+@float Table,orgf46b480
 @multitable {aaaaaaaaaaaaaa} {aaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Check
 @tab Level
@@ -358,7 +358,7 @@ The repair pass runs for every backend.
 
 @cindex commands
 
-@float Table,org2c9e9b4
+@float Table,org69a8856
 @multitable {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Command
 @tab Purpose
@@ -404,7 +404,7 @@ One job runs at a time.
 
 @samp{latex-parser-skill-output-action} decides what happens to the result of a region or buffer command.
 
-@float Table,orgaf130d8
+@float Table,orgf76dcb0
 @multitable {aaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Value
 @tab Behavior
@@ -473,7 +473,8 @@ The log buffer keeps requests and replies in memory only, and nothing is written
 @samp{latex-parser-skill-prompt-file} points at @samp{prompts/transcript-parser.md}.
 It may point at an installed @samp{SKILL.md} instead, and the front matter is removed before use.
 @samp{make sync-prompt} copies the body of the installed skill into the bundled file.
-The test suite compares the two whenever the skill is installed, so drift shows up as a failing test.
+@samp{make check-prompt} compares the two and fails when they differ.
+Both targets read @samp{~/.claude/skills/transcript-parser/SKILL.md} unless @samp{SKILL} names another file, for example @samp{make check-prompt SKILL=path/to/SKILL.md}.
 
 @node Tutorial
 @chapter Tutorial
@@ -577,7 +578,7 @@ Stage 4 sends any rule violation back to the model for one repair pass.
 A buffer called @samp{*latex-parser-skill-preview*} opens with the result.
 The header line lists the keys.
 
-@float Table,org441e0dc
+@float Table,org08f97ab
 @multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Action
@@ -698,7 +699,7 @@ Emacs reserves @samp{C-c} followed by a plain letter for users, and AUC@TeX{} us
 
 @cindex prefix keys
 
-@float Table,org33b7471
+@float Table,orgeaf802a
 @multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
@@ -745,7 +746,7 @@ Emacs reserves @samp{C-c} followed by a plain letter for users, and AUC@TeX{} us
 
 @cindex preview keys
 
-@float Table,orgb40ee1c
+@float Table,orgd561578
 @multitable {aaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Key
 @tab Command
@@ -826,8 +827,8 @@ A global binding makes it reachable from Dired or any other buffer.
 @cindex Makefile
 @cindex tests
 
-@float Table,org685adce
-@multitable {aaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+@float Table,orgd9f2d06
+@multitable {aaaaaaaaaaaaaa} {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 @headitem Target
 @tab Action
 @item @samp{all}
@@ -844,6 +845,8 @@ A global binding makes it reachable from Dired or any other buffer.
 @tab Exports this manual to Texinfo and builds the Info file
 @item @samp{sync-prompt}
 @tab Refreshes the bundled prompt from the installed skill
+@item @samp{check-prompt}
+@tab Compares the bundled prompt with the installed skill
 @item @samp{indent}
 @tab Re-indents every Lisp file
 @item @samp{clean}

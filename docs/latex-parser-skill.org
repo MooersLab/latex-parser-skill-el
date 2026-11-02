@@ -291,7 +291,8 @@ The log buffer keeps requests and replies in memory only, and nothing is written
 =latex-parser-skill-prompt-file= points at =prompts/transcript-parser.md=.
 It may point at an installed =SKILL.md= instead, and the front matter is removed before use.
 =make sync-prompt= copies the body of the installed skill into the bundled file.
-The test suite compares the two whenever the skill is installed, so drift shows up as a failing test.
+=make check-prompt= compares the two and fails when they differ.
+Both targets read =~/.claude/skills/transcript-parser/SKILL.md= unless =SKILL= names another file, for example =make check-prompt SKILL=path/to/SKILL.md=.
 
 #+INCLUDE: "./tutorial.org::*Tutorial" :minlevel 1
 
@@ -312,6 +313,7 @@ The test suite compares the two whenever the skill is installed, so drift shows 
 | =lint=        | Runs checkdoc and package-lint                                   |
 | =docs=        | Exports this manual to Texinfo and builds the Info file          |
 | =sync-prompt= | Refreshes the bundled prompt from the installed skill            |
+| =check-prompt= | Compares the bundled prompt with the installed skill            |
 | =indent=      | Re-indents every Lisp file                                       |
 | =clean=       | Removes compiled and generated files                             |
 
